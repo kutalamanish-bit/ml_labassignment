@@ -1,0 +1,70 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier, StackingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import S
+import lime
+import lime.lime_tabular
+def load_data(file_path):
+    df = pd.read_csv(file_path)
+    return df
+def split_data(df):
+    target_column = df.columns[-1]   # last column as target
+    X = df.drop(columns=[target_column])
+    y = df[target_column]
+    return X, y, target_column
+def split_train_test(X, y):
+    return train_test_split(X, y, test_size=0.2, random_state=42)
+def create_stacking_model():
+    base_models = [
+        ('rf', RandomForestClassifier(n_estimators=50, random_state=42)),
+        ('svm', SVC(probability=True))
+    ]
+    meta_model = LogisticRegression()
+    model = StackingClassifier(
+        estimators=base_models,
+        final_estimator=meta_model
+    )
+    return model
+def create_pipeline(model):
+    pipeline = Pipeline([
+        ('scaler', StandardScaler()),
+        ('classifier', model)
+    ])
+    return pipeline
+def train_model(pipeline, X_train, y_train):
+    pipeline.fit(X_train, y_train)
+    return pipeline
+def evaluate_model(pipeline, X_test, y_test):
+    return pipeline.score(X_test, y_test)
+def explain_with_lime(pipeline, X_train, X_test):
+    explainer = lime.lime_tabular.LimeTabularExplainer(
+        training_data=X_train.values,
+        feature_names=X_train.columns,
+        class_names=['Class0', 'Class1'],
+        mode='classification'
+    )
+    def predict_fn(data):
+        data_df = pd.DataFrame(data, columns=X_train.columns)
+        return pipeline.predict_proba(data_df)
+    explanation = explainer.explain_instance(
+        X_test.iloc[0].values,
+        predict_fn
+    )
+    return explanation
+if __name__ == "__main__":
+    df = load_data("DCT_mal.csv")
+    print("Columns in dataset:", df.columns)
+    X, y, target_column = split_data(df)
+    print("Using target column:", target_column)
+    X_train, X_test, y_train, y_test = split_train_test(X, y)
+    model = create_stacking_model()
+    pipeline = create_pipeline(model)
+    trained_model = train_model(pipeline, X_train, y_train)
+    accuracy = evaluate_model(trained_model, X_test, y_test)
+    print("Accuracy:", accuracy)
+    explanation = explain_with_lime(trained_model, X_train, X_test)
+    explanation.save_to_file("lime_output.html")
+    print("LIME explanation saved as lime_output.html")
